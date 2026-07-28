@@ -383,6 +383,20 @@ const handler = async (req, res) => {
       return sendJSON(res, 200, { ok: true, mode: USE_SUPABASE ? "supabase" : "local" });
     }
 
+    // 环境诊断（确认 Supabase 钥匙是否就绪 / Node 版本 / 当前模式）
+    if (method === "GET" && pathname === "/api/diag") {
+      return sendJSON(res, 200, {
+        ok: true,
+        mode: USE_SUPABASE ? "supabase" : "local",
+        nodeVersion: process.version,
+        sbUrlSet: !!SB_URL,
+        sbKeySet: !!SB_KEY,
+        sbBucket: SB_BUCKET,
+        sbTable: SB_TABLE,
+        managerPwDefault: MANAGER_PW === "6688"
+      });
+    }
+
     // 部门列表（公开）
     if (method === "GET" && pathname === "/api/depts") {
       return sendJSON(res, 200, { ok: true, depts: DEPTS });
