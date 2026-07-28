@@ -371,6 +371,39 @@ function buildZip(entries) {
   return Buffer.concat([localBuf, centralBuf, end]);
 }
 
+// ---------------------- 静态文件服务（容器模式下同时托管前端页面）----------------------
+function guessMime(p) {
+  const ext = (path.extname(p) || "").toLowerCase();
+  const map = {
+    ".html": "text/html", ".htm": "text/html",
+    ".css": "text/css", ".js": "application/javascript",
+    ".json": "application/json", ".png": "image/png",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".svg": "image/svg+xml", ".ico": "image/x-icon",
+    ".txt": "text/plain", ".csv": "text/csv"
+  };
+  return map[ext] || "application/octet-stream";
+}
+function serveStatic(req, res, pathname) {
+  let rel = pathname === "/" ? "/index.html" : pathname;
+  const filePath = path.normalize(path.join(PUBLIC_DIR, rel));
+  // 防目录穿越
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
+    return sendJSON(res, 403, { ok: false, msg: "Forbidden" });
+  }
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    // 单页应用兜底：找不到就回 index.html
+    const idx = path.join(PUBLIC_DIR, "index.html");
+    if (fs.existsSync(idx)) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return res.end(fs.readFileSync(idx));
+    }
+    return sendJSON(res, 404, { ok: false, msg: "Not Found" });
+  }
+  res.writeHead(200, { "Content-Type": guessMime(filePath) + "; charset=utf-8" });
+  res.end(fs.readFileSync(filePath));
+}
+
 // ---------------------- 路由处理器 ----------------------
 const handler = async (req, res) => {
   try {
@@ -552,6 +585,10 @@ const handler = async (req, res) => {
       return sendJSON(res, 200, { ok: true });
     }
 
+    // 非 /api 请求 → 静态文件（前端页面）；找不到文件才 404
+    if (!pathname.startsWith("/api/")) {
+      return serveStatic(req, res, pathname);
+    }
     sendJSON(res, 404, { ok: false, msg: "Not Found" });
   } catch (e) {
     sendJSON(res, 500, { ok: false, msg: "服务器错误：" + e.message });
