@@ -364,7 +364,7 @@ function validateRecord(b) {
 }
 
 // ---------- 路由 ----------
-const server = http.createServer(async (req, res) => {
+const handler = async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
     const pathname = url.pathname;
@@ -542,10 +542,17 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     sendJSON(res, 500, { ok: false, msg: "服务器错误：" + e.message });
   }
-});
+};
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log("合同编号生成器已启动： http://0.0.0.0:" + PORT);
-  console.log("存储模式：" + (USE_SUPABASE ? "云端 Supabase" : "本地文件") + (USE_SUPABASE ? "" : "  数据目录：" + DATA_DIR));
-  console.log("管理者密码：" + MANAGER_PW);
-});
+const server = http.createServer(handler);
+
+if (require.main === module) {
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log("合同编号生成器已启动： http://0.0.0.0:" + PORT);
+    console.log("存储模式：" + (USE_SUPABASE ? "云端 Supabase" : "本地文件") + (USE_SUPABASE ? "" : "  数据目录：" + DATA_DIR));
+    console.log("管理者密码：" + MANAGER_PW);
+  });
+}
+
+// 同时支持 Vercel 等 serverless 平台：导出 handler 供 api/index.js 复用
+module.exports = { handler };
