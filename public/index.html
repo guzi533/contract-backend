@@ -376,10 +376,11 @@
 
     api("POST", "/api/records", payload).then(function (res) {
       if (res.ok && res.data && res.data.ok) {
-        copyText(res.data.code);
+        var code = res.data.record ? res.data.record.code : res.data.code;
+        copyText(code);
         resetForm();
         loadRecords();
-        toast("已生成并复制：" + res.data.code);
+        toast("已生成并复制：" + code);
       } else {
         toast(res.data && res.data.msg ? res.data.msg : "生成失败");
       }
