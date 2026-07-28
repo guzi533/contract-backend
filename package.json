@@ -1,0 +1,13 @@
+{
+  "name": "contract-code-generator",
+  "version": "1.0.0",
+  "description": "合同编号生成器（多人共享版后端，零依赖）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "private": true
+}

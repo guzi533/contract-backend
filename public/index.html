@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>合同编号生成器</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-d: #1d4ed8;
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --ok: #16a34a;
+    --danger: #dc2626;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+  header h1 { font-size: 22px; margin: 4px 0; }
+  header p { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .tag { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .rule {
+    background: #eef2ff; color: #3730a3; border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; margin-bottom: 14px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  label .req { color: var(--danger); }
+  input[type=text], input[type=number], input[type=date], select, textarea {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; color: var(--text); background: #fff;
+    font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .check input { width: auto; }
+  .check label { margin: 0; font-size: 14px; color: var(--text); }
+  .radio-group { display: flex; gap: 18px; margin-top: 6px; }
+  .radio-group label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; color: var(--text); cursor: pointer; }
+  .radio-group input { width: auto; }
+  .field-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .mgr-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .mgr-bar input[type=password] { width: auto; max-width: 170px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+  button {
+    border: none; border-radius: 8px; padding: 11px 16px; font-size: 14px;
+    cursor: pointer; font-family: inherit; transition: .15s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; flex: 1; min-width: 160px; font-weight: 600; }
+  .btn-primary:hover { background: var(--primary-d); }
+  .btn-line { background: #fff; border: 1px solid var(--border); color: var(--text); }
+  .btn-line:hover { background: #f9fafb; }
+  .btn-ghost { background: transparent; color: var(--danger); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: #fef2f2; }
+  .btn-sm { padding: 6px 10px; font-size: 12px; }
+  .toast {
+    position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
+    background: #111827; color: #fff; padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: .25s; z-index: 99;
+  }
+  .toast.show { opacity: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .code-cell { font-weight: 700; color: var(--primary-d); white-space: nowrap; }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
+  .row-acts { display: flex; gap: 6px; }
+  .hist-scroll { max-height: 360px; overflow: auto; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>合同编号生成器</h1>
+    <p>按「年 - 32 - 部门编号 - 3位流水号」自动生成编号，并登记合同信息。数据集中保存在服务器，多人共享、流水号连续。</p>
+  </header>
+
+  <!-- 管理者专用：重置本年流水号（仅管理者登录后显示） -->
+  <div class="card" id="mgrResetCard" style="display:none;">
+    <h2>管理者操作 <span class="tag">已登录</span></h2>
+    <div class="btns">
+      <button class="btn-line btn-sm" id="resetSeqBtn">重置本年流水号</button>
+      <button class="btn-ghost btn-sm" id="mgrLogoutBtn">退出管理者</button>
+    </div>
+  </div>
+
+  <!-- 合同信息（含编号条件） -->
+  <div class="card">
+    <h2>合同信息 <span class="tag">（除“合同签署日期”外均为必填；编号自动生成）</span></h2>
+
+    <div class="grid2">
+      <div>
+        <label>部门 <span class="req">*</span></label>
+        <select id="dept"></select>
+      </div>
+      <div>
+        <label>合同签署日期</label>
+        <input type="text" id="signDate" placeholder="如：2026-07-17（暂未签署可留空）" />
+      </div>
+    </div>
+
+    <label>部门/机构 <span class="req">*</span></label>
+    <input type="text" id="f_org" placeholder="分公司填写部门名称、机构填写机构名称" />
+
+    <label>合同名称 <span class="req">*</span></label>
+    <input type="text" id="f_name" placeholder="如：2026年度办公用品采购合同" />
+
+    <div class="grid2">
+      <div>
+        <label>合同甲方 <span class="req">*</span></label>
+        <input type="text" id="f_partyA" />
+      </div>
+      <div>
+        <label>合同乙方 <span class="req">*</span></label>
+        <input type="text" id="f_partyB" />
+      </div>
+    </div>
+    <label>合同丙方</label>
+    <input type="text" id="f_partyC" placeholder="如无丙方可留空" />
+
+    <div class="grid2">
+      <div>
+        <label>合同类别 <span class="req">*</span></label>
+        <input type="text" id="f_category" placeholder="如：采购 / 服务 / 租赁" />
+      </div>
+      <div>
+        <label>合同期限 <span class="req">*</span></label>
+        <input type="text" id="f_term" placeholder="如：2026-01-01 至 2026-12-31" />
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <label>合同标的 <span class="req">*</span></label>
+        <input type="text" id="f_subject" />
+      </div>
+      <div>
+        <label>合同金额（元） <span class="req">*</span></label>
+        <input type="number" id="f_amount" placeholder="0.00" />
+        <div class="field-hint">如无金额请填 0</div>
+      </div>
+    </div>
+
+    <label>是否为公司格式文本 <span class="req">*</span></label>
+    <div class="radio-group">
+      <label><input type="radio" name="f_isFormat" value="yes" checked /> 是</label>
+      <label><input type="radio" name="f_isFormat" value="no" /> 否</label>
+    </div>
+
+    <label>合同约定的各方应履行的义务（内容、时间、标准） <span class="req">*</span></label>
+    <textarea id="f_obligations" placeholder="一般填：详见合同"></textarea>
+
+    <label>合同约定的各方义务的履行情况 <span class="req">*</span></label>
+    <textarea id="f_performance" placeholder="正常 / 不正常"></textarea>
+
+    <label>合同变更情况 <span class="req">*</span></label>
+    <textarea id="f_change" placeholder="如无变更填“无”"></textarea>
+
+    <label>是否涉及纠纷及诉讼/仲裁 <span class="req">*</span></label>
+    <div class="radio-group">
+      <label><input type="radio" name="f_dispute" value="yes" /> 是</label>
+      <label><input type="radio" name="f_dispute" value="no" checked /> 否</label>
+    </div>
+    <label>纠纷/诉讼/仲裁说明</label>
+    <textarea id="f_disputeDesc" placeholder="如不涉及可留空；涉及纠纷时请填写"></textarea>
+
+    <label>上传合同文件 <span class="req">*</span> <span class="tag">（支持 Word / PDF，必传）</span></label>
+    <input type="file" id="f_file" accept=".doc,.docx,.pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf" />
+    <div class="field-hint">支持 .doc/.docx/.pdf；单个文件建议不超过 20MB（文件保存在服务器，多人可下载）</div>
+    <div class="field-hint" id="fileInfo" style="display:none;"></div>
+  </div>
+
+  <!-- 生成 -->
+  <div class="card">
+    <div class="btns">
+      <button class="btn-primary" id="genBtn">生成编号并保存</button>
+    </div>
+  </div>
+
+  <!-- 历史 -->
+  <div class="card">
+    <h2>生成记录 <span class="tag" id="histCount"></span></h2>
+    <div class="btns" style="margin-bottom:12px;" id="mgrActions">
+      <button class="btn-line btn-sm" id="exportBtn">导出 CSV（管理者）</button>
+      <button class="btn-line btn-sm" id="zipBtn">批量下载合同（ZIP，管理者）</button>
+      <button class="btn-ghost btn-sm" id="clearBtn">清空记录（管理者）</button>
+    </div>
+    <div class="mgr-bar" id="mgrBar">
+      <input type="password" id="mgrPw" placeholder="管理者密码" />
+      <button class="btn-line btn-sm" id="mgrLoginBtn">管理者登录</button>
+      <span class="field-hint">删除与下载表格仅管理者可用</span>
+    </div>
+    <div class="hist-scroll">
+      <table id="histTable">
+        <thead>
+          <tr>
+            <th>编号</th><th>部门</th><th>合同名称</th><th>甲方</th><th>日期</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="histBody"></tbody>
+      </table>
+      <div class="empty" id="histEmpty">还没有生成记录</div>
+    </div>
+  </div>
+
+  <footer>本工具为多人共享版：数据集中保存在服务器（单一数据库），所有访问者看到的是同一份记录，流水号全局连续。</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var DEPTS = [
+    { label: "综合", code: "01" },
+    { label: "财务", code: "02" },
+    { label: "社保", code: "03" },
+    { label: "团险", code: "04" },
+    { label: "运营", code: "05" },
+    { label: "纪检/合规", code: "06" },
+    { label: "健管", code: "07" },
+    { label: "个客", code: "08" },
+    { label: "个渠（银保、互动）", code: "09" }
+  ];
+
+  var managerUnlocked = false;
+  var mgrToken = "";          // 管理者登录后获得的令牌，敏感接口通过请求头携带
+  var records = [];           // 后端返回的记录列表
+
+  var $ = function (id) { return document.getElementById(id); };
+  var deptSel = $("dept"), signDate = $("signDate");
+
+  // 填充部门
+  DEPTS.forEach(function (d, i) {
+    var o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = d.label + "（" + d.code + "）";
+    deptSel.appendChild(o);
+  });
+
+  function toast(msg) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.classList.remove("show"); }, 1800);
+  }
+  function copyText(txt) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function(){ toast("已复制：" + txt); },
+        function(){ fallbackCopy(txt); });
+    } else { fallbackCopy(txt); }
+  }
+  function fallbackCopy(txt) {
+    var ta = document.createElement("textarea");
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("已复制：" + txt); }
+    catch (e) { toast("复制失败，请手动复制"); }
+    document.body.removeChild(ta);
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function val(id) { var e = $(id); return e ? e.value.trim() : ""; }
+  function radioYes(name) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    return el && el.value === "yes";
+  }
+
+  // ---- 文件 ----
+  var currentFile = null;
+  var MAX_FILE = 20 * 1024 * 1024; // 20MB
+  (function () {
+    var fileInput = $("f_file"), fileInfo = $("fileInfo");
+    fileInput.addEventListener("change", function () {
+      var f = fileInput.files && fileInput.files[0];
+      if (!f) { currentFile = null; fileInfo.style.display = "none"; return; }
+      if (!/\.(doc|docx|pdf)$/i.test(f.name)) {
+        toast("仅支持 Word（.doc/.docx）或 PDF 文件"); fileInput.value = ""; currentFile = null; fileInfo.style.display = "none"; return;
+      }
+      if (f.size > MAX_FILE) {
+        toast("文件过大（超过 20MB），请压缩后再上传"); fileInput.value = ""; currentFile = null; fileInfo.style.display = "none"; return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        currentFile = { name: f.name, data: reader.result };
+        fileInfo.style.display = "block";
+        fileInfo.textContent = "已选择：" + f.name + "（" + (f.size / 1024).toFixed(0) + " KB）";
+      };
+      reader.onerror = function () { toast("文件读取失败"); currentFile = null; };
+      reader.readAsDataURL(f);
+    });
+  })();
+
+  // ---- API ----
+  function api(method, url, body) {
+    var headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (mgrToken) headers["x-manager-token"] = mgrToken;
+    return fetch(url, {
+      method: method,
+      headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      var ct = r.headers.get("Content-Type") || "";
+      if (ct.indexOf("application/json") >= 0) return r.json().then(function (j) { return { ok: r.ok, data: j }; });
+      return { ok: r.ok, data: null, blob: r.blob ? r.blob() : null };
+    });
+  }
+  function loadRecords() {
+    return api("GET", "/api/records").then(function (res) {
+      if (res.ok && res.data && res.data.ok) { records = res.data.records; renderHistory(); }
+      else toast("加载记录失败");
+    }).catch(function () { toast("无法连接服务器"); });
+  }
+
+  // ---- 生成 ----
+  function doGenerate() {
+    var di = deptSel.value;
+    if (di === "") { toast("请先选择部门"); return; }
+    if (signDate.value && !/^\d{4}/.test(signDate.value.trim())) {
+      toast("签署日期格式有误，请按“年-月-日”填写（如 2026-07-17）"); return;
+    }
+    if (!currentFile) { toast("请先上传合同文件（必传项）"); return; }
+
+    var required = [
+      ["f_org", "部门/机构"], ["f_name", "合同名称"], ["f_partyA", "合同甲方"],
+      ["f_partyB", "合同乙方"], ["f_category", "合同类别"], ["f_subject", "合同标的"],
+      ["f_amount", "合同金额（元）"], ["f_term", "合同期限"],
+      ["f_obligations", "义务（内容/时间/标准）"], ["f_performance", "履行情况"], ["f_change", "变更情况"]
+    ];
+    for (var i = 0; i < required.length; i++) {
+      if (!val(required[i][0])) { toast("请填写：" + required[i][1]); return; }
+    }
+    if (radioYes("f_dispute") && !val("f_disputeDesc")) {
+      toast("涉及纠纷，请填写纠纷/诉讼/仲裁说明"); return;
+    }
+
+    var payload = {
+      deptIndex: parseInt(di, 10),
+      date: signDate.value,
+      org: val("f_org"), name: val("f_name"),
+      partyA: val("f_partyA"), partyB: val("f_partyB"), partyC: val("f_partyC"),
+      category: val("f_category"), term: val("f_term"), subject: val("f_subject"),
+      amount: val("f_amount"),
+      isFormat: radioYes("f_isFormat"),
+      obligations: val("f_obligations"), performance: val("f_performance"), change: val("f_change"),
+      dispute: radioYes("f_dispute"), disputeDesc: val("f_disputeDesc"),
+      file: currentFile ? { name: currentFile.name, data: currentFile.data } : null
+    };
+
+    api("POST", "/api/records", payload).then(function (res) {
+      if (res.ok && res.data && res.data.ok) {
+        copyText(res.data.code);
+        resetForm();
+        loadRecords();
+        toast("已生成并复制：" + res.data.code);
+      } else {
+        toast(res.data && res.data.msg ? res.data.msg : "生成失败");
+      }
+    }).catch(function () { toast("网络错误，生成失败"); });
+  }
+
+  function resetForm() {
+    ["f_name", "f_org", "f_partyA", "f_partyB", "f_partyC", "f_category",
+     "f_term", "f_subject", "f_amount", "f_obligations", "f_performance",
+     "f_change", "f_disputeDesc"].forEach(function (id) { if ($(id)) $(id).value = ""; });
+    if (deptSel) deptSel.value = "";
+    if (signDate) signDate.value = "";
+    currentFile = null;
+    if ($("f_file")) $("f_file").value = "";
+    if ($("fileInfo")) $("fileInfo").style.display = "none";
+    var f1 = document.querySelector('input[name="f_isFormat"][value="yes"]');
+    var f2 = document.querySelector('input[name="f_dispute"][value="no"]');
+    if (f1) f1.checked = true;
+    if (f2) f2.checked = true;
+  }
+
+  function renderHistory() {
+    var body = $("histBody");
+    body.innerHTML = "";
+    $("histCount").textContent = records.length ? "（共 " + records.length + " 条）" : "";
+    $("histEmpty").style.display = records.length ? "none" : "block";
+    records.forEach(function (r) {
+      var tr = document.createElement("tr");
+      var disp = r.dispute ? "是" + (r.disputeDesc ? "（" + r.disputeDesc + "）" : "") : "否";
+      var fileBtn = r.fileName
+        ? '<a class="btn-line btn-sm" style="text-decoration:none;" href="/api/records/' + r.id + '/file">合同</a>'
+        : '';
+      tr.innerHTML =
+        '<td class="code-cell">' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.dept) + '</td>' +
+        '<td>' + esc(r.name || "—") + '</td>' +
+        '<td>' + esc(r.partyA || "—") + '</td>' +
+        '<td>' + esc(r.date || "—") + '</td>' +
+        '<td><div class="row-acts">' +
+          '<button class="btn-line btn-sm" data-act="copy" data-id="' + r.id + '">复制</button>' +
+          fileBtn +
+          '<button class="btn-ghost btn-sm" data-act="del" data-id="' + r.id + '"' + (managerUnlocked ? '' : ' style="display:none;"') + '>删</button>' +
+        '</div></td>';
+      body.appendChild(tr);
+    });
+  }
+
+  // ---- 下载辅助 ----
+  function downloadBlob(url, filename) {
+    var headers = mgrToken ? { "x-manager-token": mgrToken } : undefined;
+    fetch(url, { headers: headers }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error(e.msg || "下载失败"); });
+      return r.blob();
+    }).then(function (blob) {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      toast("已开始下载：" + filename);
+    }).catch(function (e) { toast(e.message || "下载失败"); });
+  }
+
+  function applyLock() {
+    $("mgrActions").style.display = managerUnlocked ? "flex" : "none";
+    $("mgrBar").style.display = managerUnlocked ? "none" : "flex";
+    $("mgrResetCard").style.display = managerUnlocked ? "block" : "none";
+  }
+
+  // ---- 事件 ----
+  $("genBtn").addEventListener("click", doGenerate);
+
+  $("resetSeqBtn").addEventListener("click", function () {
+    if (!confirm("确定将 " + new Date().getFullYear() + " 年的流水号重置为 1 吗？")) return;
+    api("POST", "/api/reset-seq", { year: new Date().getFullYear() })
+      .then(function (res) {
+        if (res.ok && res.data && res.data.ok) toast(new Date().getFullYear() + " 年流水号已重置");
+        else toast(res.data && res.data.msg ? res.data.msg : "重置失败");
+      }).catch(function () { toast("网络错误"); });
+  });
+
+  $("exportBtn").addEventListener("click", function () {
+    downloadBlob("/api/export/csv", "合同编号记录_" + new Date().toISOString().slice(0, 10) + ".csv");
+  });
+  $("zipBtn").addEventListener("click", function () {
+    downloadBlob("/api/export/zip", "合同文件_" + new Date().toISOString().slice(0, 10) + ".zip");
+  });
+  $("clearBtn").addEventListener("click", function () {
+    if (!records.length) { toast("暂无记录"); return; }
+    if (!confirm("确定清空所有生成记录吗？（编号流水号不受影响）")) return;
+    api("POST", "/api/clear", {}).then(function (res) {
+      if (res.ok && res.data && res.data.ok) { records = []; renderHistory(); toast("已清空记录"); }
+      else toast(res.data && res.data.msg ? res.data.msg : "清空失败");
+    }).catch(function () { toast("网络错误"); });
+  });
+
+  $("histBody").addEventListener("click", function (e) {
+    var btn = e.target.closest("button"); if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    var act = btn.getAttribute("data-act");
+    if (act === "copy") {
+      var r = records.find(function (x) { return x.id === id; });
+      if (r) copyText(r.code);
+    } else if (act === "del") {
+      if (!confirm("删除该记录？")) return;
+      api("DELETE", "/api/records/" + id, null).then(function (res) {
+        if (res.ok && res.data && res.data.ok) { loadRecords(); toast("已删除"); }
+        else toast(res.data && res.data.msg ? res.data.msg : "删除失败");
+      }).catch(function () { toast("网络错误"); });
+    }
+  });
+
+  $("mgrLoginBtn").addEventListener("click", function () {
+    var pw = $("mgrPw").value;
+    if (!pw) { toast("请输入管理者密码"); return; }
+    api("POST", "/api/login", { pw: pw }).then(function (res) {
+      if (res.ok && res.data && res.data.ok) {
+        managerUnlocked = true; mgrToken = res.data.token;
+        try { sessionStorage.setItem("mgrToken", mgrToken); } catch (e) {}
+        $("mgrPw").value = "";
+        applyLock(); renderHistory(); toast("已进入管理者模式");
+      } else { toast("密码错误"); }
+    }).catch(function () { toast("网络错误"); });
+  });
+  $("mgrPw").addEventListener("keydown", function (e) { if (e.key === "Enter") $("mgrLoginBtn").click(); });
+
+  $("mgrLogoutBtn").addEventListener("click", function () {
+    managerUnlocked = false; mgrToken = "";
+    try { sessionStorage.removeItem("mgrToken"); } catch (e) {}
+    applyLock(); renderHistory(); toast("已退出管理者模式");
+  });
+
+  // 初始化
+  try { mgrToken = sessionStorage.getItem("mgrToken") || ""; } catch (e) {}
+  if (mgrToken) managerUnlocked = true;
+  applyLock();
+  loadRecords();
+})();
+</script>
+</body>
+</html>
