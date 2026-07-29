@@ -24,7 +24,10 @@ const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const MANAGER_PW = process.env.MANAGER_PW || "6688";
-const FIXED = "32";
+const FIXED = "3205";
+// 流水号起始基准：你手动已编到 82 号，系统生成的下一个从 83 开始。
+// 仅作用于“当年”（跨年自动从 001 重新计）。如需调整，改这个数字即可。
+const SEQ_BASE = 82;
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4MB（Vercel 免费版请求体上限约 4.5MB，留余量）
 
@@ -76,7 +79,7 @@ function getYear(dateStr) {
   return String(new Date().getFullYear());
 }
 function pad3(n) { return ("00" + n).slice(-3); }
-function buildCode(year, deptCode, seq) { return year + "-" + FIXED + "-" + deptCode + "-" + pad3(seq); }
+function buildCode(year, seq) { return year + "-" + FIXED + "-" + pad3(seq); }
 
 // ---------------------- 存储层：本地 / Supabase ----------------------
 function ensureLocalDirs() {
@@ -257,19 +260,23 @@ async function storeReadFile(rec) {
 }
 
 // ---------------------- 业务：流水号 ----------------------
-async function nextSeqFor(year, deptCode) {
-  // 按已有记录里同年同部门最大流水号 + 1
+async function nextSeqFor(year) {
+  // 按已有记录里同年最大流水号 + 1（编号格式：年-3205-流水号）
+  const prefix = year + "-" + FIXED + "-";
   const all = await storeGetAll();
   let max = 0;
   for (const r of all) {
     if (!r || !r.code) continue;
-    if (r.code.startsWith(year + "-" + FIXED + "-" + deptCode + "-")) {
+    if (r.code.startsWith(prefix)) {
       const tail = r.code.split("-").pop();
       const n = parseInt(tail, 10);
       if (!isNaN(n) && n > max) max = n;
     }
   }
-  return max + 1;
+  // 起始基准：当年手动已编到 SEQ_BASE 号，系统生成的下一个不能小于 SEQ_BASE+1。
+  // 跨年（year 不是当年）时不套用基准，自动从 001 重新计。
+  const floor = (year === String(new Date().getFullYear())) ? SEQ_BASE : 0;
+  return Math.max(max, floor) + 1;
 }
 
 // ---------------------- 鉴权 ----------------------
@@ -451,47 +458,34 @@ const handler = async (req, res) => {
       return sendJSON(res, 200, { ok: true, token: tok, ttlMs: TOKEN_TTL });
     }
 
-    // POST /api/records （新增 + 生成编号 + 上传文件）
+    // POST /api/records （新增 + 生成编号）
     if (method === "POST" && pathname === "/api/records") {
       const raw = await readBody(req);
       let b; try { b = JSON.parse(raw); } catch (e) { b = {}; }
-      const di = parseInt(b.deptIndex, 10);
-      if (isNaN(di) || di < 0 || di >= DEPTS.length) return sendJSON(res, 400, { ok: false, msg: "部门无效" });
-      const dept = DEPTS[di];
-      const year = getYear(b.date);
-      const seq = await nextSeqFor(year, dept.code);
-      const code = buildCode(year, dept.code, seq);
+      const year = getYear(b.signDate);
+      const seq = await nextSeqFor(year);
+      const code = buildCode(year, seq);
       const id = crypto.randomUUID();
       const rec = {
-        id, code,
-        year, dept: dept.name, deptCode: dept.code, seq,
-        date: b.date || "",
-        org: b.org || "",
-        name: b.name || "",
-        partyA: b.partyA || "", partyB: b.partyB || "", partyC: b.partyC || "",
+        id, code, year, seq,
+        contractName: b.contractName || "",
+        partyA: b.partyA || "",
+        partyB: b.partyB || "",
+        partyC: b.partyC || "",
         category: b.category || "",
-        term: b.term || "",
+        signDate: b.signDate || "",
         subject: b.subject || "",
         amount: b.amount || "0",
-        isFormat: !!b.isFormat,
+        term: b.term || "",
         obligations: b.obligations || "",
         performance: b.performance || "",
         change: b.change || "",
+        changeDesc: b.changeDesc || "",
         dispute: !!b.dispute,
         disputeDesc: b.disputeDesc || "",
-        fileName: (b.file && b.file.name) || "",
+        sealTime: b.sealTime || "",
         createdAt: new Date().toISOString()
       };
-      if (b.file && b.file.data) {
-        // dataURL: data:<mime>;base64,xxxxx
-        const m = /^data:([^;]+);base64,(.*)$/.exec(b.file.data);
-        if (m) {
-          const mime = m[1];
-          const buf = Buffer.from(m[2], "base64");
-          if (buf.length > MAX_FILE_BYTES) return sendJSON(res, 400, { ok: false, msg: "合同文件超过 4MB，请压缩后再上传" });
-          await storeSaveFile(rec, buf, mime, rec.fileName);
-        }
-      }
       await storeAdd(rec);
       // 列表里展示用
       const out = Object.assign({}, rec);
@@ -526,15 +520,14 @@ const handler = async (req, res) => {
     if (method === "GET" && pathname === "/api/export/csv") {
       if (!requireManager(req, res)) return;
       const all = await storeGetAll();
-      const headers = ["编号","年份","部门","部门码","流水号","签署日期","部门/机构","合同名称","甲方","乙方","丙方","类别","期限","标的","金额","是否格式文本","义务","履行情况","变更","是否纠纷","纠纷说明","文件名","创建时间"];
+      const headers = ["编号","年份","流水号","合同名称","甲方","乙方","丙方","合同类别","合同签署日期","合同标的","合同金额","合同期限","义务(内容/时间/标准)","履行情况","变更情况","变更说明","是否涉及纠纷","纠纷说明","合同用印时间","创建时间"];
       const esc = v => { const s = v == null ? "" : String(v); return /[\",\\n]/.test(s) ? "\"" + s.replace(/\"/g, "\"\"") + "\"" : s; };
       const lines = [headers.join(",")];
       for (const r of all) {
         lines.push([
-          r.code, r.year, r.dept, r.deptCode, r.seq, r.date, r.org, r.name,
-          r.partyA, r.partyB, r.partyC, r.category, r.term, r.subject, r.amount,
-          r.isFormat ? "是" : "否", r.obligations, r.performance, r.change,
-          r.dispute ? "是" : "否", r.disputeDesc, r.fileName, r.createdAt
+          r.code, r.year, r.seq, r.contractName, r.partyA, r.partyB, r.partyC, r.category, r.signDate,
+          r.subject, r.amount, r.term, r.obligations, r.performance, r.change, r.changeDesc,
+          r.dispute ? "是" : "否", r.disputeDesc, r.sealTime, r.createdAt
         ].map(esc).join(","));
       }
       const csv = "\uFEFF" + lines.join("\n");
