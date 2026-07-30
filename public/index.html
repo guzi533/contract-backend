@@ -90,8 +90,8 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>苏州中支合同台账</h1>
-    <p>按「年 - 3205 - 3 位流水号」自动生成编号，并登记合同信息。数据集中保存在服务器，多人共享、流水号连续。</p>
+    <h1 id="appTitle">苏州中支合同台账</h1>
+    <p id="appDesc">按「年 - 3205 - 3 位流水号」自动生成编号，并登记合同信息。数据集中保存在服务器，多人共享、流水号连续。</p>
   </header>
 
   <!-- 管理者专用 -->
@@ -106,6 +106,9 @@
   <!-- 合同信息 -->
   <div class="card">
     <h2>合同信息 <span class="tag">（除"合同签署日期""丙方"外均为必填；编号自动生成）</span></h2>
+
+    <label>录入人 <span class="req">*</span></label>
+    <input type="text" id="f_operator" placeholder="填表人姓名（首次填写后会自动记住）" />
 
     <label>合同名称 <span class="req">*</span></label>
     <input type="text" id="f_contractName" placeholder="如：2026 年度办公用品采购合同" />
@@ -215,7 +218,7 @@
       <table id="histTable">
         <thead>
           <tr>
-            <th>编号</th><th>合同名称</th><th>甲方</th><th>乙方</th><th>类别</th><th>签署日期</th><th>用印时间</th><th></th>
+            <th>编号</th><th>录入人</th><th>合同名称</th><th>甲方</th><th>乙方</th><th>类别</th><th>签署日期</th><th>用印时间</th><th></th>
           </tr>
         </thead>
         <tbody id="histBody"></tbody>
@@ -294,6 +297,7 @@
 
   // ---- 生成 ----
   function doGenerate() {
+    if (!val("f_operator")) { toast("请填写：录入人"); return; }
     if (!val("f_contractName")) { toast("请填写：合同名称"); return; }
     if (!val("f_partyA")) { toast("请填写：甲方"); return; }
     if (!val("f_partyB")) { toast("请填写：乙方"); return; }
@@ -316,7 +320,9 @@
       toast("合同有变更，请填写变更说明"); return;
     }
 
+    try { localStorage.setItem("hetong_operator", val("f_operator")); } catch (e) {}
     var payload = {
+      operator: val("f_operator"),
       contractName: val("f_contractName"),
       partyA: val("f_partyA"),
       partyB: val("f_partyB"),
@@ -351,7 +357,6 @@
   function resetForm() {
     ["f_contractName","f_partyA","f_partyB","f_partyC","f_category","f_subject","f_amount",
      "f_obligationsOther","f_changeDesc","f_disputeDesc","f_signDate","f_sealTime"].forEach(function (id) { if ($(id)) $(id).value = ""; });
-    // 隐藏所有"其他/有/是"说明框
     ["f_obligationsOther","f_changeDesc","f_disputeDesc"].forEach(function (id) { if ($(id)) $(id).style.display = "none"; });
     var def = {
       "f_obligations": "详见合同", "f_performance": "正常", "f_change": "无", "f_dispute": "否"
@@ -371,6 +376,7 @@
       var tr = document.createElement("tr");
       tr.innerHTML =
         '<td class="code-cell">' + esc(r.code) + '</td>' +
+        '<td>' + esc(r.operator || "—") + '</td>' +
         '<td>' + esc(r.contractName || "—") + '</td>' +
         '<td>' + esc(r.partyA || "—") + '</td>' +
         '<td>' + esc(r.partyB || "—") + '</td>' +
@@ -394,7 +400,6 @@
   // ---- 事件 ----
   $("genBtn").addEventListener("click", doGenerate);
 
-  // 选择项联动显示说明框
   document.querySelectorAll('input[name="f_obligations"]').forEach(function (el) {
     el.addEventListener("change", function () {
       $("f_obligationsOther").style.display = radioVal("f_obligations") === "其他" ? "block" : "none";
@@ -469,10 +474,23 @@
   });
 
   // 初始化
+  try { var savedOp = localStorage.getItem("hetong_operator"); if (savedOp && $("f_operator")) $("f_operator").value = savedOp; } catch (e) {}
   try { mgrToken = sessionStorage.getItem("mgrToken") || ""; } catch (e) {}
   if (mgrToken) managerUnlocked = true;
   applyLock();
   loadRecords();
+
+  // 读取本实例配置（标题 / 机构固定码），实现一份代码多分公司共用
+  fetch("/api/config").then(function (r) { return r.json(); }).then(function (cfg) {
+    if (!cfg || !cfg.ok) return;
+    if (cfg.title) {
+      document.title = cfg.title;
+      if ($("appTitle")) $("appTitle").textContent = cfg.title;
+    }
+    if (cfg.fixed && $("appDesc")) {
+      $("appDesc").textContent = "按「年 - " + cfg.fixed + " - 3 位流水号」自动生成编号，并登记合同信息。数据集中保存在服务器，多人共享、流水号连续。";
+    }
+  }).catch(function () {});
 
   function downloadBlob(url, filename) {
     var headers = mgrToken ? { "x-manager-token": mgrToken } : undefined;
