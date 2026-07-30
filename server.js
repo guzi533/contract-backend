@@ -24,10 +24,13 @@ const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const MANAGER_PW = process.env.MANAGER_PW || "6688";
-const FIXED = "3205";
-// 流水号起始基准：你手动已编到 82 号，系统生成的下一个从 83 开始。
-// 仅作用于“当年”（跨年自动从 001 重新计）。如需调整，改这个数字即可。
-const SEQ_BASE = 82;
+// 机构固定码（编号中段）。默认苏州中支 3205；江苏分公司等可通过环境变量 FIXED 覆盖。
+const FIXED = process.env.FIXED || "3205";
+// 页面标题。默认苏州中支；其他分公司通过环境变量 CONTRACT_TITLE 覆盖。
+const CONTRACT_TITLE = process.env.CONTRACT_TITLE || "苏州中支合同台账";
+// 流水号起始基准：苏州你手动已编到 82 号，系统生成的下一个从 83 开始。
+// 仅作用于“当年”（跨年自动从 001 重新计）。其他分公司通过环境变量 SEQ_BASE 覆盖（默认 0，即从 001 开始）。
+const SEQ_BASE = parseInt(process.env.SEQ_BASE || "82", 10);
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4MB（Vercel 免费版请求体上限约 4.5MB，留余量）
 
@@ -423,6 +426,11 @@ const handler = async (req, res) => {
       return sendJSON(res, 200, { ok: true, mode: USE_SUPABASE ? "supabase" : "local" });
     }
 
+    // 前端配置（标题 / 机构固定码），供不同分公司实例共用同一份代码
+    if (method === "GET" && pathname === "/api/config") {
+      return sendJSON(res, 200, { ok: true, title: CONTRACT_TITLE, fixed: FIXED });
+    }
+
     // 环境诊断（确认 Supabase 钥匙是否就绪 / Node 版本 / 当前模式）
     if (method === "GET" && pathname === "/api/diag") {
       return sendJSON(res, 200, {
@@ -468,6 +476,7 @@ const handler = async (req, res) => {
       const id = crypto.randomUUID();
       const rec = {
         id, code, year, seq,
+        operator: b.operator || "",
         contractName: b.contractName || "",
         partyA: b.partyA || "",
         partyB: b.partyB || "",
@@ -520,12 +529,12 @@ const handler = async (req, res) => {
     if (method === "GET" && pathname === "/api/export/csv") {
       if (!requireManager(req, res)) return;
       const all = await storeGetAll();
-      const headers = ["编号","年份","流水号","合同名称","甲方","乙方","丙方","合同类别","合同签署日期","合同标的","合同金额","合同期限","义务(内容/时间/标准)","履行情况","变更情况","变更说明","是否涉及纠纷","纠纷说明","合同用印时间","创建时间"];
+      const headers = ["编号","年份","流水号","录入人","合同名称","甲方","乙方","丙方","合同类别","合同签署日期","合同标的","合同金额","合同期限","义务(内容/时间/标准)","履行情况","变更情况","变更说明","是否涉及纠纷","纠纷说明","合同用印时间","创建时间"];
       const esc = v => { const s = v == null ? "" : String(v); return /[\",\\n]/.test(s) ? "\"" + s.replace(/\"/g, "\"\"") + "\"" : s; };
       const lines = [headers.join(",")];
       for (const r of all) {
         lines.push([
-          r.code, r.year, r.seq, r.contractName, r.partyA, r.partyB, r.partyC, r.category, r.signDate,
+          r.code, r.year, r.seq, r.operator, r.contractName, r.partyA, r.partyB, r.partyC, r.category, r.signDate,
           r.subject, r.amount, r.term, r.obligations, r.performance, r.change, r.changeDesc,
           r.dispute ? "是" : "否", r.disputeDesc, r.sealTime, r.createdAt
         ].map(esc).join(","));
